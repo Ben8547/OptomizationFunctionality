@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("OptomizationFunctionality")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c706bfffd08756c579ea9981977a069a03898516")]
 [assembly: System.Reflection.AssemblyProductAttribute("OptomizationFunctionality")]
 [assembly: System.Reflection.AssemblyTitleAttribute("OptomizationFunctionality")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

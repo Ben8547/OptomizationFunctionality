@@ -1,8 +1,6 @@
 ﻿//using MathNet.Numerics.LinearAlgebra; // for vectorized math
 // was originaly using MathNet for the matrix functionality, but since I need a different random number for each coordinate anyway, it makes more since just to iterate over arrays in this case.
-
-
-using MathNet.Numerics.Optimization;
+using System.Threading.Channels; // used only for streaming data out of optomization for for tasks such as animation
 
 namespace OptimizationFunctionality
 {
@@ -23,8 +21,6 @@ namespace OptimizationFunctionality
         {
             private readonly OptimizationProblem optimizationProblem; // this is passed by reference into the construction since we only need to know the interal value, but we keep it as readonly so as to not change variable outside of the class' scope.
             private readonly int numberOfPoints;
-            private readonly double[] lowerBounds; // note that readonly does not make this field immutable
-            private readonly double[] upperBounds;
             private double[][] states;
             private double[][] velocities;
             private readonly double stepSize;
@@ -62,15 +58,6 @@ namespace OptimizationFunctionality
                 {
                     throw new ArgumentException("The number of dimensions must match the length of the initial state.");
                 }
-
-                // set private variables for this class
-                this.lowerBounds = new double[optimizationProblem.numberOfDimensions];
-                this.upperBounds = new double[optimizationProblem.numberOfDimensions];
-                for (int i = 0; i < optimizationProblem.numberOfDimensions; i++)
-                {
-                    this.lowerBounds[i] = optimizationProblem.bounds[i].Item1;
-                    this.upperBounds[i] = optimizationProblem.bounds[i].Item2;
-                }
             }
 
             /// </summary>
@@ -94,22 +81,15 @@ namespace OptimizationFunctionality
                     this.random = new Random(); // this is used for generating random numbers if hardware entropy is not used.
                 }
 
-                this.lowerBounds = new double[optimizationProblem.numberOfDimensions];
-                this.upperBounds = new double[optimizationProblem.numberOfDimensions];
                 this.states = new double[this.numberOfPoints][];
                 this.velocities = new double[this.numberOfPoints][];
-                for (int i = 0; i < optimizationProblem.numberOfDimensions; i++)
-                {
-                    this.lowerBounds[i] = optimizationProblem.bounds[i].Item1;
-                    this.upperBounds[i] = optimizationProblem.bounds[i].Item2;
-                }
                 for (int j = 0; j < this.numberOfPoints; j++)
                 {
                     this.states[j] = new double[optimizationProblem.numberOfDimensions];
                     this.velocities[j] = new double[optimizationProblem.numberOfDimensions];
                     for (int i = 0; i < optimizationProblem.numberOfDimensions; i++)
                     {
-                        this.states[j][i] = lowerBounds[i] + (upperBounds[i] - lowerBounds[i]) * GetRandDouble(useQuasirandom);
+                        this.states[j][i] = optimizationProblem.LowerBounds[i] + (optimizationProblem.UpperBounds[i] - optimizationProblem.LowerBounds[i]) * GetRandDouble(useQuasirandom);
                         // velocities are initialized to zero by default, so we don't need to set them here.
                     }
                 }
@@ -142,7 +122,7 @@ namespace OptimizationFunctionality
             {
                 //Console.WriteLine($"Optimizing"); // debug
                 ObjectiveFunction objectiveFunction;
-                MutateProblem(out objectiveFunction); // adjust a min problem to a max problem by negating the objective function if necessary
+                double multiplier = MutateProblem(out objectiveFunction); // adjust a min problem to a max problem by negating the objective function if necessary
                 double[] particleBestValue = new double[numberOfPoints]; // for each particle, contains its best visited location's score
                 double[][] particleBestLocation = new double[numberOfPoints][]; // for each particle, contains its best visited location's coordinates. We need a depp copy because the matrix is a reference type
                 double globalBestValue = double.MinValue; // contains the best score of all particles
@@ -152,6 +132,76 @@ namespace OptimizationFunctionality
                 bool shouldContinue = true;
                 byte tracker = 0; // this will track how many iterations have passed without improvement in the global best value
                 // now we initialize the particle and global best values
+                PopulateOptimalArrays(in objectiveFunction, ref particleBestLocation, ref particleBestValue, ref globalBestValue, ref globalBestPoint);
+
+                while (shouldContinue)
+                {
+                    UpdateStates(in objectiveFunction, ref particleBestLocation, ref particleBestValue, ref globalBestValue, ref globalBestPoint, ref prevBestValue);
+                    TrackerLogic(ref tracker, in globalBestValue, in prevBestValue, ref shouldContinue);
+                }
+
+                OptimizationSolution solution = new OptimizationSolution(multiplier * globalBestValue, globalBestPoint, optimizationProblem.tolerance, optimizationProblem.optimizationType, optimizationMethod);
+
+                return solution;
+            }
+            public async Task StreamOptimization(Channel<StreamPackagePSO> channel)
+            {
+
+                ObjectiveFunction objectiveFunction;
+                double multiplier = MutateProblem(out objectiveFunction); // adjust a min problem to a max problem by negating the objective function if necessary
+
+                double prevBestValue = 0.0d;
+                double globalBestValue = double.MinValue; // contains the best score of all particles
+                double[] globalBestPoint = new double[optimizationProblem.numberOfDimensions];
+                double[][] particleBestLocation = new double[numberOfPoints][]; // for each particle, contains its best visited location's coordinates. We need a deep copy because the matrix is a reference type
+                double[] particleBestValue = new double[numberOfPoints];
+                double[][] velocities = new double[numberOfPoints][];
+                bool shouldContinue = true;
+                byte tracker = 0; // this will track how many iterations have passed without improvement in the global best value
+                // now we initialize the particle and global best values
+                PopulateOptimalArrays(in objectiveFunction, ref particleBestLocation, ref particleBestValue, ref globalBestValue, ref globalBestPoint);
+
+                while (shouldContinue)
+                {
+                    StreamPackagePSO packet = new StreamPackagePSO(numberOfPoints, optimizationProblem.numberOfDimensions); //make a new stuct each iteration because it contains a reference type. When we push it into the channel, we don't want to overwrite references prematurely if the channel is backlogged.
+
+                    UpdateStates(in objectiveFunction, ref particleBestLocation, ref particleBestValue, ref globalBestValue, ref globalBestPoint, ref prevBestValue);
+                    packet.correctedGlobalBestValue = multiplier * globalBestValue;
+                    packet.SetStates(states);
+                    packet.globalBestPoint = (double[])globalBestPoint.Clone();
+                    await channel.Writer.WriteAsync(packet); // add the packet to the channel
+                    TrackerLogic(ref tracker, in globalBestValue, in prevBestValue, ref shouldContinue);
+                };
+                channel.Writer.Complete(); // close the input stream to the channel
+            }
+            /// <summary>
+            /// This method mutates the optimization problem's objective function if it is a minimization problem. It negates the objective function to convert it into a maximization problem, which is required for the particle swarm optimization algorithm. If the optimization problem is already a maximization problem, it simply assigns the original objective function to the output parameter.
+            /// </summary>
+            /// <param name="objectiveFunction"> The mutated objective function </param>
+            /// <returns> The multiplier for correcting the global best value </returns>
+            protected double MutateProblem(out ObjectiveFunction objectiveFunction)
+            {
+                if (optimizationProblem.optimizationType == "min")//convert min problem to max problem by negating the objective function
+                {
+                    objectiveFunction = (x => -optimizationProblem.objectiveFunction(x));
+                    return -1.0d;
+                }
+                else // it is already a max problem
+                {
+                    objectiveFunction = optimizationProblem.objectiveFunction;
+                    return 1.0d;
+                }
+            }
+            /// <summary>
+            /// This method populates the best known locations and values for each particle in the swarm, as well as the global best location and value. It iterates through each particle, evaluates the objective function at its current state, and updates the best known values and locations accordingly.
+            /// </summary>
+            /// <param name="objectiveFunction"> The objective function to optimize </param>
+            /// <param name="particleBestLocation"> The best known locations for each particle </param>
+            /// <param name="particleBestValue"> The best known values for each particle </param>
+            /// <param name="globalBestValue"> The global best value </param>
+            /// <param name="globalBestPoint"> The point yielding the global best value </param>
+            protected void PopulateOptimalArrays(in ObjectiveFunction objectiveFunction, ref double[][] particleBestLocation, ref double[] particleBestValue, ref double globalBestValue, ref double[] globalBestPoint)
+            {
                 for (int i = 0; i < numberOfPoints; i++)
                 {
                     particleBestLocation[i] = (double[])states[i].Clone(); // we need a deep copy because the matrix is a reference type
@@ -160,70 +210,98 @@ namespace OptimizationFunctionality
                     {
                         globalBestValue = particleBestValue[i];
                         globalBestPoint = (double[])states[i].Clone();
-                    }   
+                    }
                 }
-                while (shouldContinue)
-                {
-                    //Console.WriteLine($"Entered Main Loop"); // debug
-                    prevBestValue = globalBestValue;
-                    for (int i = 0; i < numberOfPoints; i++)
-                    {
-                        for (int j = 0; j < optimizationProblem.numberOfDimensions; j++)
-                        {
-                            velocities[i][j] = velocities[i][j] + 2.0 * (GetRandDouble() * (particleBestLocation[i][j] - states[i][j])) + 2.0 * (GetRandDouble() * (globalBestPoint[j] - states[i][j]));
-                            states[i][j] = states[i][j] + velocities[i][j] * stepSize; // simple Euler ODE should suffice
-                            states[i][j] = Math.Min(Math.Max(states[i][j], lowerBounds[j]), upperBounds[j]); // ensure that the state is within the bounds
-                        }
-                        // now we determine the best value for each particle and make updates.
-                        double objFuncOut = objectiveFunction(states[i]);
-                        if (objFuncOut > particleBestValue[i])
-                        {
-                            particleBestValue[i] = objFuncOut;
-                            particleBestLocation[i] = (double[])states[i].Clone();
-                            if (particleBestValue[i] > globalBestValue)
-                            {
-                                globalBestValue = particleBestValue[i];
-                                globalBestPoint = (double[])states[i].Clone();
-                            }
-                        }
-                    }
-                    if (Math.Abs(prevBestValue - globalBestValue) < optimizationProblem.tolerance)
-                    {
-                        tracker++;
-                    }
-                    else
-                    {
-                        tracker = 0; // reset the tracker since there was a large change in the global optimal value
-                    }
-                    if (tracker >= 200) // this limit was chosen arbitrarily, but it means that the global best value has not changed by more than the tolerance for 200 iterations, so we can assume convergence.
-                    {
-                        shouldContinue = false;
-                    }
-                    //Console.WriteLine($"{tracker}"); // debug
-                }
-
-                if (optimizationProblem.optimizationType == "min")
-                {
-                    globalBestValue = -globalBestValue; // convert back to the original problem's value
-                }
-
-                OptimizationSolution solution = new OptimizationSolution(globalBestValue, globalBestPoint, optimizationProblem.tolerance, optimizationProblem.optimizationType, optimizationMethod);
-                
-                return solution;
             }
-            protected void MutateProblem(out ObjectiveFunction objectiveFunction)
+            /// <summary>
+            /// This method updates the states of the particles in the swarm based on their velocities and the best known positions of the particles and the global best position. It also updates the best known positions and values for each particle and the global best position and value.
+            /// </summary>
+            /// <param name="objectiveFunction"> The objective function to optimize </param>
+            /// <param name="particleBestLocation"> The best known locations for each particle </param>
+            /// <param name="particleBestValue"> The best known values for each particle </param>
+            /// <param name="globalBestValue"> The global best value </param>
+            /// <param name="globalBestPoint"> The global best point </param>
+            /// <param name="prevBestValue"> The previous global best value </param>
+            protected void UpdateStates(in ObjectiveFunction objectiveFunction, ref double[][] particleBestLocation, ref double[] particleBestValue, ref double globalBestValue, ref double[] globalBestPoint, ref double prevBestValue)
             {
-                if (optimizationProblem.optimizationType == "min")//convert min problem to max problem by negating the objective function
+                //Console.WriteLine($"Entered Main Loop"); // debug
+                prevBestValue = globalBestValue;
+                for (int i = 0; i < numberOfPoints; i++)
                 {
-                    objectiveFunction = (x => -optimizationProblem.objectiveFunction(x));
-                }
-                else // it is already a max problem
-                {
-                    objectiveFunction = optimizationProblem.objectiveFunction;
+                    for (int j = 0; j < optimizationProblem.numberOfDimensions; j++)
+                    {
+                        velocities[i][j] = velocities[i][j] + 2.0 * (GetRandDouble() * (particleBestLocation[i][j] - states[i][j])) + 2.0 * (GetRandDouble() * (globalBestPoint[j] - states[i][j]));
+                        states[i][j] = states[i][j] + velocities[i][j] * stepSize; // simple Euler ODE should suffice
+                        states[i][j] = Math.Min(Math.Max(states[i][j], optimizationProblem.LowerBounds[j]), optimizationProblem.UpperBounds[j]); // ensure that the state is within the bounds
+                    }
+                    // now we determine the best value for each particle and make updates.
+                    double objFuncOut = objectiveFunction(states[i]);
+                    if (objFuncOut > particleBestValue[i])
+                    {
+                        particleBestValue[i] = objFuncOut;
+                        particleBestLocation[i] = (double[])states[i].Clone();
+                        if (particleBestValue[i] > globalBestValue)
+                        {
+                            globalBestValue = particleBestValue[i];
+                            globalBestPoint = (double[])states[i].Clone();
+                        }
+                    }
                 }
             }
-
+            /// <summary>
+            /// This method tracks the number of iterations that have passed without improvement in the global best value. If the number of iterations exceeds a certain threshold, the optimization process will stop.
+            /// </summary>
+            /// <param name="tracker"> tracks the number of iterations without improvement </param>
+            /// <param name="globalBestValue"> the current global best value </param>
+            /// <param name="prevBestValue"> the previous global best value </param>
+            /// <param name="shouldContinue"> indicates whether the optimization should continue </param>
+            /// <param name="threshhold"> the threshold for the number of iterations without improvement </param>
+            protected void TrackerLogic(ref byte tracker, in double globalBestValue, in double prevBestValue, ref bool shouldContinue, byte threshhold = 200)
+            {
+                if (Math.Abs(prevBestValue - globalBestValue) < optimizationProblem.tolerance)
+                {
+                    tracker++;
+                }
+                else
+                {
+                    tracker = 0; // reset the tracker since there was a large change in the global optimal value
+                }
+                if (tracker >= threshhold) // this limit was chosen arbitrarily, but it means that the global best value has not changed by more than the tolerance for 200 iterations, so we can assume convergence.
+                {
+                    shouldContinue = false;
+                }
+                //Console.WriteLine($"{tracker}"); // debug
+            }
         }
-
+        /// <summary>
+        /// A structure for cleaning encapselating the optimazation progress streamed out of the Particle Swarm Optimizer
+        /// </summary>
+        public struct StreamPackagePSO // needs to be public so that the channel can be created to accept this type
+        {
+            public double[][] states;
+            public double correctedGlobalBestValue; // the global best value after correcting for minimization problems
+            public double[] globalBestPoint;
+            public StreamPackagePSO(int numParticles, int numDimensions)
+            {
+                this.states = new double[numParticles][];
+                for (int i = 0; i < numParticles; i++)
+                {
+                    this.states[i] = new double[numDimensions];
+                }
+                this.correctedGlobalBestValue = double.MinValue;
+                this.globalBestPoint = new double[numDimensions];
+            }
+            /// <summary>
+            /// Makes a deep copy of another jagged array
+            /// </summary>
+            /// <param name="state"> The jagged array to copy </param>
+            public void SetStates(double[][] state)
+            {
+                for (int i = 0; i < state.Length; i++)
+                {
+                    states[i] = (double[])state[i].Clone();
+                }
+            }
+        }
     }
 }
