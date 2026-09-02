@@ -26,11 +26,14 @@ namespace OptimizationFunctionality
                     {
                         throw new ArgumentException("Dimension of the solution space must be 2 to use this method.");
                     }
+                    string? problemType = problem.optimizationType == "min"
+                        ? "minimum"
+                        : "maximum";
 
 
                     // Kick off the paralell process
                     Task optimize = optimizer.StreamOptimization(channel);
-                    Task animate = CreateAnimationPSO(channel, FrameLBounds, FrameUBounds, outFilePath, frameRate);
+                    Task animate = CreateAnimationPSO(channel, FrameLBounds, FrameUBounds, outFilePath, frameRate, problemType);
 
                     await Task.WhenAll(optimize, animate);
 
