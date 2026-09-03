@@ -14,6 +14,20 @@ namespace OptimizationFunctionality
             /// </summary>
             public static class AnimationPSO
             {
+                /// <summary>
+                /// This function intakes an optimiztion problem with continuous objective function from R^2 -> R.
+                /// It solves the optimization problem, piping the particle data generated at each step into a channel.
+                /// This data is then converted into frames visualizing the movement of prticles through solution space.
+                /// The global optimum at each phase is also recorded.
+                /// </summary>
+                /// <param name="problem"></param>
+                /// <param name="numPoints"></param>
+                /// <param name="useQuasirandom"></param>
+                /// <param name="frameRate"></param>
+                /// <param name="outFilePath"></param>
+                /// <param name="stepSize"></param>
+                /// <returns></returns>
+                /// <exception cref="ArgumentException"></exception>
                 public static async Task AnimatePSOwith2DSolutionSpace(OptimizationProblem problem, int numPoints = 100, bool useQuasirandom = false, int frameRate = 30,string outFilePath="./PSO_Animation.mp4", double stepSize=0.1)
                 {
                     ParticleSwarmOptimizer optimizer = new ParticleSwarmOptimizer(problem, numberOfPoints: numPoints, useQuasirandom: useQuasirandom, stepSize: stepSize);
