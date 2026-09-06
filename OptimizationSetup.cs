@@ -12,7 +12,7 @@ public delegate double ObjectiveFunction(double[] x);
 /// From this class it should be possible to perform and optimization technique.
 /// Each Technique will be derrived from this class so that class contains only the functionality common to each technique.
 /// </summary>
-public class OptimizationProblem // not sealed incase a particular optimization technique needs to derrive from this class to implement its own functionality
+public class ContinuousOptimizationProblem // not sealed incase a particular optimization technique needs to derrive from this class to implement its own functionality
 {
     public readonly bool useHardwareEntropy;
     public readonly double tolerance; // the tolerance for convergence
@@ -41,7 +41,7 @@ public class OptimizationProblem // not sealed incase a particular optimization 
     /// <param name="optimizationType"></param>
     /// <param name="useHardwareEntropy"></param>
     /// <exception cref="ArgumentException"></exception>
-    public OptimizationProblem(ObjectiveFunction objectiveFunction, double[] lowerBounds, double[] upperBounds, double tolerance = 1e-6, string optimizationType = "min", bool useHardwareEntropy = false)
+    public ContinuousOptimizationProblem(ObjectiveFunction objectiveFunction, double[] lowerBounds, double[] upperBounds, double tolerance = 1e-6, string optimizationType = "min", bool useHardwareEntropy = false)
     {
         if (optimizationType.ToLower() != "min" && optimizationType.ToLower() != "max")
         {
@@ -65,7 +65,7 @@ public class OptimizationProblem // not sealed incase a particular optimization 
     /// <param name="bounds">Each tuple defines the compact interval over which the solution space should be searched.</param>
     /// <param name="optimizationType">The type of optimization problem, either "min" or "max".</param>
     /// <param name="tolerance">The tolerance for convergence.</param>
-    public OptimizationProblem(ObjectiveFunction objectiveFunction, ValueTuple<double, double>[] bounds, double tolerance = 1e-6, string optimizationType = "min", bool useHardwareEntropy = false) // this is called whenever a non-abstract derrved class is created
+    public ContinuousOptimizationProblem(ObjectiveFunction objectiveFunction, ValueTuple<double, double>[] bounds, double tolerance = 1e-6, string optimizationType = "min", bool useHardwareEntropy = false) // this is called whenever a non-abstract derrved class is created
         : this(objectiveFunction, BoundsTupleSeperate(bounds,"lower"), BoundsTupleSeperate(bounds,"upper"), tolerance, optimizationType, useHardwareEntropy)
     {
         foreach (var bound in bounds)
