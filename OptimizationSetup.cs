@@ -5,20 +5,49 @@ namespace OptimizationFunctionality;
 ///<summary>
 /// this defines an objection function from R^n to R
 /// </summary>
-public delegate double ObjectiveFunction(double[] x);
+public delegate double ContinuousObjectiveFunction(double[] x);
+/// <summary>
+/// This type of objective functon is meant to model a problem taking a finite number of configurations of the solution.
+/// The integer array is meant to represent the most general form of input so that it may be compatable with as many types of problem as possible.
+/// It is the objective function's responcibility to map the integer keys to the given problem.
+/// An array of integers is allowed in the case that a solution space may contain a set of finite items, and the given set of items determines the objective's value.
+/// For example, instead of giveing each configuration of the solution space a unique integer, we give each component of the space an integer and permute the inters within the array
+/// to find the optimal configuration of the integer array.
+/// </summary>
+/// <param name="x"></param>
+/// <returns> a real number which is to be optimized under the range of inputs</returns>
+public delegate double DiscreteObjectiveFunction(int[] x);
+
+
+public abstract class OptimizationProblem
+{
+    public readonly bool useHardwareEntropy;
+    public readonly double tolerance; // the tolerance for convergence
+    public readonly string optimizationType; // the type of optimization problem, either "min" or "max". This is a read only field of the class. The default is "min".
+    protected OptimizationProblem(double tolerance, bool useHardwareEntropy, string optimizationType="min")
+    {
+        this.tolerance  = tolerance;
+        this.useHardwareEntropy = useHardwareEntropy;
+        this.optimizationType= optimizationType.ToLower();
+        if (this.optimizationType != "min" && this.optimizationType != "max")
+        {
+            throw new ArgumentException("Optimiztion type must be \"min\" or \"max\"");
+        }
+    }
+
+}
+
 
 /// <summary>
 /// This class stores all of the data required to perform a given optomization problem.
 /// From this class it should be possible to perform and optimization technique.
 /// Each Technique will be derrived from this class so that class contains only the functionality common to each technique.
 /// </summary>
-public class ContinuousOptimizationProblem // not sealed incase a particular optimization technique needs to derrive from this class to implement its own functionality
+public class ContinuousOptimizationProblem : OptimizationProblem // not sealed incase a particular optimization technique needs to derrive from this class to implement its own functionality
 {
-    public readonly bool useHardwareEntropy;
-    public readonly double tolerance; // the tolerance for convergence
     public readonly int numberOfDimensions; // the dimension of the solution space
-    private readonly ObjectiveFunction objective; // this allows us to privately mutate the objective to convert minimization problems into maximization ones
-    public ObjectiveFunction objectiveFunction { get { return objective; } } // the property pointing to the objective function to be optimized
+    private readonly ContinuousObjectiveFunction objective; // this allows us to privately mutate the objective to convert minimization problems into maximization ones
+    public ContinuousObjectiveFunction objectiveFunction { get { return objective; } } // the property pointing to the objective function to be optimized
     private readonly double[] lowerBounds;
     private readonly double[] upperBounds;
     public double[] LowerBounds
@@ -29,7 +58,6 @@ public class ContinuousOptimizationProblem // not sealed incase a particular opt
     {
         get { return upperBounds; }
     }
-    public readonly string optimizationType; // the type of optimization problem, either "min" or "max". This is a read only field of the class. The default is "min".
     
     /// <summary>
     /// This constructor allows the user to gives the bounds in two separate arrays of equal length.
@@ -41,17 +69,15 @@ public class ContinuousOptimizationProblem // not sealed incase a particular opt
     /// <param name="optimizationType"></param>
     /// <param name="useHardwareEntropy"></param>
     /// <exception cref="ArgumentException"></exception>
-    public ContinuousOptimizationProblem(ObjectiveFunction objectiveFunction, double[] lowerBounds, double[] upperBounds, double tolerance = 1e-6, string optimizationType = "min", bool useHardwareEntropy = false)
+    public ContinuousOptimizationProblem(ContinuousObjectiveFunction objectiveFunction, double[] lowerBounds, double[] upperBounds, double tolerance = 1e-6, string optimizationType = "min", bool useHardwareEntropy = false)
+        :base(tolerance, useHardwareEntropy, optimizationType);
     {
         if (optimizationType.ToLower() != "min" && optimizationType.ToLower() != "max")
         {
             throw new ArgumentException("Optimization type must be either 'min' or 'max'");
         }
         this.objective = objectiveFunction;
-        this.useHardwareEntropy = useHardwareEntropy;
         this.numberOfDimensions = lowerBounds.Length;
-        this.tolerance = tolerance;
-        this.optimizationType = optimizationType;
 
         this.lowerBounds = lowerBounds;
         this.upperBounds = upperBounds;
@@ -65,7 +91,7 @@ public class ContinuousOptimizationProblem // not sealed incase a particular opt
     /// <param name="bounds">Each tuple defines the compact interval over which the solution space should be searched.</param>
     /// <param name="optimizationType">The type of optimization problem, either "min" or "max".</param>
     /// <param name="tolerance">The tolerance for convergence.</param>
-    public ContinuousOptimizationProblem(ObjectiveFunction objectiveFunction, ValueTuple<double, double>[] bounds, double tolerance = 1e-6, string optimizationType = "min", bool useHardwareEntropy = false) // this is called whenever a non-abstract derrved class is created
+    public ContinuousOptimizationProblem(ContinuousObjectiveFunction objectiveFunction, ValueTuple<double, double>[] bounds, double tolerance = 1e-6, string optimizationType = "min", bool useHardwareEntropy = false) // this is called whenever a non-abstract derrved class is created
         : this(objectiveFunction, BoundsTupleSeperate(bounds,"lower"), BoundsTupleSeperate(bounds,"upper"), tolerance, optimizationType, useHardwareEntropy)
     {
         foreach (var bound in bounds)

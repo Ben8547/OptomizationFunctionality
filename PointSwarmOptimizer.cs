@@ -11,15 +11,15 @@ namespace OptimizationFunctionality
     {
         /// <summary>
         /// Here we implement the basic point swarm optimization technique found in James Kennedy and Russell Eberhart 1995 paper.
-        /// This class is derrived from the OptimizationProblem class.
-        /// It's mandatory parameter is an object of the OptimizationProblem type.
+        /// This class is derrived from the ContinuousOptimizationProblem class.
+        /// It's mandatory parameter is an object of the ContinuousOptimizationProblem type.
         /// It additionally takes a set of non-mandatory parameters: the number of points to simulate and the initial state as an array of doubles representing the initial positions of the swarm. The final optional parmaters sets the desired accuracy of the solution. This should be decimal such as 1e-3 meaning that the global solution did not change by more than 1e-3 for a given number of generations before compleation.
         /// A final paramter is a boolean indicating whether to use hardware sourced entropy or not. If not, the default .NET random number generator will be used. By default this is False.
         /// A final note that the intitial state array, if provided must have a number of rows equal to the number of points to be simulated and nuber of columns equal to the dimensions of the solution space.
         /// </summary>
         public class ParticleSwarmOptimizer
         {
-            private readonly OptimizationProblem optimizationProblem; // this is passed by reference into the construction since we only need to know the interal value, but we keep it as readonly so as to not change variable outside of the class' scope.
+            private readonly ContinuousOptimizationProblem optimizationProblem; // this is passed by reference into the construction since we only need to know the interal value, but we keep it as readonly so as to not change variable outside of the class' scope.
             private readonly int numberOfPoints;
             private double[][] states;
             private double[][] velocities;
@@ -34,7 +34,7 @@ namespace OptimizationFunctionality
             /// <param name="useHardwareEntropy"> Whether to use hardware-sourced entropy for random number generation</param>
             /// <exception cref="ArgumentException"></exception>
             /// </summary>
-            public ParticleSwarmOptimizer(in OptimizationProblem optimizationProblem, in double[][] initialState, in double stepSize = 0.1)
+            public ParticleSwarmOptimizer(in ContinuousOptimizationProblem optimizationProblem, in double[][] initialState, in double stepSize = 0.1)
             {
                 // constructor for the particle swarm optimizer
 
@@ -69,7 +69,7 @@ namespace OptimizationFunctionality
             /// <param name="useQuasirandom"> Whether to use quasi-random number generation for the initial state. If false, uniform random number generation will be used.</param>
             /// <exception cref="ArgumentException"></exception>
             /// </summary>
-            public ParticleSwarmOptimizer(in OptimizationProblem optimizationProblem, int numberOfPoints, double stepSize = 0.1, bool useQuasirandom = true)
+            public ParticleSwarmOptimizer(in ContinuousOptimizationProblem optimizationProblem, int numberOfPoints, double stepSize = 0.1, bool useQuasirandom = true)
             {
                 // constructor generating a random initial state
 
@@ -109,7 +109,7 @@ namespace OptimizationFunctionality
                 return random.NextDouble();
             }
 
-            public ParticleSwarmOptimizer(OptimizationProblem optimizationProblem, double stepSize = 0.1)
+            public ParticleSwarmOptimizer(ContinuousOptimizationProblem optimizationProblem, double stepSize = 0.1)
                 : this(optimizationProblem, 100, stepSize)
             {
                 // sets the number of simualted points to 100.
@@ -121,7 +121,7 @@ namespace OptimizationFunctionality
             public OptimizationSolution Optimize()
             {
                 //Console.WriteLine($"Optimizing"); // debug
-                ObjectiveFunction objectiveFunction;
+                ContinuousObjectiveFunction objectiveFunction;
                 double multiplier = MutateProblem(out objectiveFunction); // adjust a min problem to a max problem by negating the objective function if necessary
                 double[] particleBestValue = new double[numberOfPoints]; // for each particle, contains its best visited location's score
                 double[][] particleBestLocation = new double[numberOfPoints][]; // for each particle, contains its best visited location's coordinates. We need a depp copy because the matrix is a reference type
@@ -147,7 +147,7 @@ namespace OptimizationFunctionality
             public async Task StreamOptimization(Channel<StreamPackagePSO> channel)
             {
 
-                ObjectiveFunction objectiveFunction;
+                ContinuousObjectiveFunction objectiveFunction;
                 double multiplier = MutateProblem(out objectiveFunction); // adjust a min problem to a max problem by negating the objective function if necessary
 
                 double prevBestValue = 0.0d;
@@ -179,7 +179,7 @@ namespace OptimizationFunctionality
             /// </summary>
             /// <param name="objectiveFunction"> The mutated objective function </param>
             /// <returns> The multiplier for correcting the global best value </returns>
-            protected double MutateProblem(out ObjectiveFunction objectiveFunction)
+            protected double MutateProblem(out ContinuousObjectiveFunction objectiveFunction)
             {
                 if (optimizationProblem.optimizationType == "min")//convert min problem to max problem by negating the objective function
                 {
@@ -200,7 +200,7 @@ namespace OptimizationFunctionality
             /// <param name="particleBestValue"> The best known values for each particle </param>
             /// <param name="globalBestValue"> The global best value </param>
             /// <param name="globalBestPoint"> The point yielding the global best value </param>
-            protected void PopulateOptimalArrays(in ObjectiveFunction objectiveFunction, ref double[][] particleBestLocation, ref double[] particleBestValue, ref double globalBestValue, ref double[] globalBestPoint)
+            protected void PopulateOptimalArrays(in ContinuousObjectiveFunction objectiveFunction, ref double[][] particleBestLocation, ref double[] particleBestValue, ref double globalBestValue, ref double[] globalBestPoint)
             {
                 for (int i = 0; i < numberOfPoints; i++)
                 {
@@ -222,7 +222,7 @@ namespace OptimizationFunctionality
             /// <param name="globalBestValue"> The global best value </param>
             /// <param name="globalBestPoint"> The global best point </param>
             /// <param name="prevBestValue"> The previous global best value </param>
-            protected void UpdateStates(in ObjectiveFunction objectiveFunction, ref double[][] particleBestLocation, ref double[] particleBestValue, ref double globalBestValue, ref double[] globalBestPoint, ref double prevBestValue)
+            protected void UpdateStates(in ContinuousObjectiveFunction objectiveFunction, ref double[][] particleBestLocation, ref double[] particleBestValue, ref double globalBestValue, ref double[] globalBestPoint, ref double prevBestValue)
             {
                 //Console.WriteLine($"Entered Main Loop"); // debug
                 prevBestValue = globalBestValue;

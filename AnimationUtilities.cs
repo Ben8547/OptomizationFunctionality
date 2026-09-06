@@ -28,7 +28,7 @@ namespace OptimizationFunctionality
                 /// <param name="stepSize"></param>
                 /// <returns></returns>
                 /// <exception cref="ArgumentException"></exception>
-                public static async Task AnimatePSOwith2DSolutionSpace(OptimizationProblem problem, int numPoints = 100, bool useQuasirandom = false, int frameRate = 30,string outFilePath="./PSO_Animation.mp4", double stepSize=0.1)
+                public static async Task AnimatePSOwith2DSolutionSpace(ContinuousOptimizationProblem problem, int numPoints = 100, bool useQuasirandom = false, int frameRate = 30,string outFilePath="./PSO_Animation.mp4", double stepSize=0.1)
                 {
                     ParticleSwarmOptimizer optimizer = new ParticleSwarmOptimizer(problem, numberOfPoints: numPoints, useQuasirandom: useQuasirandom, stepSize: stepSize);
                     
